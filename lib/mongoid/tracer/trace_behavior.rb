@@ -7,7 +7,7 @@ module Mongoid
       include Mongoid::Timestamps::Created
 
       included do
-        field :action, type: Symbol
+        field :action, type: Symbol # un metodo field que recibe un symbol y un hash de opciones
         field :message, type: String
         field :target_model_name
         field :target_id
@@ -188,6 +188,7 @@ module Mongoid
         changes
       end
 
+      # Metodo importante para determinar los cambios
       def previous
         unless @previous_cached
           if (@previous = class_with_options.where(target_id: target_id, :created_at.lt => created_at).desc(:created_at).limit(1).first) && persistence_options
@@ -198,6 +199,7 @@ module Mongoid
         @previous
       end
 
+      # Metodo importante para determinar los cambios
       def next
         unless @next_cached
           if (@next = class_with_options.where(target_id: target_id, :created_at.gt => created_at).asc(:created_at).limit(1).first) && persistence_options
@@ -206,6 +208,51 @@ module Mongoid
           @next_cached = true
         end
         @next
+      end
+
+      def previous_traces
+        trace_array = []
+        current = self
+        begin
+          trace_array.unshift(current)
+          current = current.previous
+        end while current
+        return trace_array
+      end
+
+      def prev_compact_list_traces
+        prev_list = previous_traces
+
+        new_list = []
+
+        prev_list.each do |trace|
+          if !new_list.length
+            new_list.push(trace)
+          else
+            last = new_list.pop
+            last.attributes_trace.merge!(trace.attributes_trace){ |key, v1, v2| v1 }
+            new_list.push(last)
+
+            intersep = last.attributes_trace.keys & trace.attributes_trace.keys
+            if intersep.length
+              # subhash
+              # .....
+
+            end
+
+          end
+        end
+      end
+
+      def merge_prev(opts = {})
+        if prev_trace = previous
+          safe = true
+          unless action == :destroy
+            attributes_trace.merge!(prev_trace.attributes_trace){ |key, v1, v2| v1 }
+            safe = save
+          end
+          prev_trace.destroy if safe && !opts[:keep_previous]
+        end
       end
 
       def class_with_options
